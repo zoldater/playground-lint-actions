@@ -1,0 +1,32 @@
+name: presubmit
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  statuses: write
+
+# Cancel previous runs if a new one is started.
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Presubmit tests triggered by a "/presubmit" comment.
+  presubmit:
+    if: github.event.issue.pull_request && (github.event.comment.body == '/presubmit' || github.event.comment.body == '/submit')
+    runs-on: ubuntu-20.04
+
+    steps:
+      ##### General test environment setup #####
+      - uses: actions/checkout@v3
+      - uses: github/super-linter@v4
+        env:
+          VALIDATE_ALL_CODEBASE: true
+          VALIDATE_CLANG_FORMAT: true
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
