@@ -6,53 +6,61 @@ jobs:
   golangci-lint:
     name: runner / golangci-lint
     runs-on: ubuntu-20.04
-    permissions: write-all
+    permissions: 
+      contents: read
+      issues: write
+      pull-requests: write
+
     steps:
       # Checkout sources
       - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # tag=v3.3.0
 
       - uses: reviewdog/action-golangci-lint@v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.github_token }}
           reviewdog_version: v0.14.1
           fail_on_error: true
           level: error
           reporter: github-pr-review
           # filter_mode: nofilter
           golangci_lint_flags: "--new-from-rev=HEAD~"
-
   clang-format:
-    runs-on: ubuntu-20.04
+    name: runner / clang-format
+    runs-on: ubuntu-latest
+    permissions: 
+      contents: read
+      issues: write
+      pull-requests: write
+
     steps:
-        # Checkout sources
-        - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # tag=v3.3.0
+      - uses: actions/checkout@v2
+      - name: Setup reviewdog tool
+        id: setup-reviewdog
+        uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: v0.14.1
+      # Collect changed or added files changed files
+      - uses: technote-space/get-diff-action@f27caffdd0fb9b13f4fc191c016bb4e0632844af # tag=v6.1.1
+        with:
+          PATTERNS: '**/*.+(h|hpp|c|C|cc|cpp|c++|cxx)'
+      # Execute clang-format against each diff in the branch and post results to reviewdog
+      - name: Check clang-format
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.github_token }}
+        shell: bash
+        run: |
+          set -e
+          cd "$GITHUB_WORKSPACE" || exit 2
 
-        # Setup reviewdog
-        - name: Setup reviewdog tool
-          id: setup-reviewdog
-          uses: reviewdog/action-setup@v1
-          with:
-            reviewdog_version: v0.14.1
-        # Collect changed or added files changed files
-        - uses: technote-space/get-diff-action@f27caffdd0fb9b13f4fc191c016bb4e0632844af # tag=v6.1.1
-        # Execute clang-format against each diff in the branch and post results to reviewdog
-        - name: Check clang-format
-          shell: bash
-          env:
-            REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          for filename in ${{ env.GIT_DIFF_FILTERED }}
+          do
+            mv $filename "${filename}.orig"
+            docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm ghcr.io/jidicula/clang-format:13 --style=file --fallback-style=Google "${filename}.orig" > $filename
+            local_format="$(diff -u --label="${filename}.orig" "${filename}.orig" --label=$filename $filename || true)"
+            echo "${local_format}"
 
-          run: |
-            for filename in "${{ env.GIT_DIFF }}"
-            do
-              formatted="$(docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm ghcr.io/jidicula/clang-format:"$CLANG_FORMAT_VERSION" --style=Google "${filename}")"
-              local_format="$(diff -q <(cat "${filepath}") <(echo "${formatted}"))"
-              local format_status="$?"
-              if [[ ${format_status} -ne 0 ]]; then
-                reviewdog -name=clang-format-check -f=diff -fail-on-error=true -reporter=github-pr-review "${local_format}"
-              fi
-            done
-  #
-  # py-format:
-  #     runs-on: ubuntu-20.04
-  #     needs: setup
-          #
+            if [[ -n "$local_format" ]]; then
+              echo "${local_format}" | reviewdog -name=clang-format-check -f=diff -f.diff.strip=0 -level=error -fail-on-error=true -reporter=github-pr-review 
+            fi
+          done
+
