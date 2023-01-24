@@ -1,0 +1,11 @@
+run:
+  allow-parallel-runners: false
+
+linters:
+  # Disable all linters.
+  disable-all: true
+  enable:
+    - gofmt
+    - goimports
+    - godot
+ 

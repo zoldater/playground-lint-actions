@@ -1,0 +1,79 @@
+name: formatters 
+
+on: [pull_request]
+
+jobs:
+  go-format:
+    name: runner / go-format
+    runs-on: ubuntu-20.04
+    permissions: 
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      # Checkout sources
+      - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # tag=v3.3.0
+      - uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: v0.14.1
+      # Collect changed or added Go files
+      - uses: technote-space/get-diff-action@f27caffdd0fb9b13f4fc191c016bb4e0632844af # tag=v6.1.1
+        with:
+          PATTERNS: '**/*.go'
+      # Execute gofmt against each diff in the branch and post results to reviewdog
+      - name: Check goimports
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.github_token }}
+        shell: bash
+        run: |
+          set -e
+          cd "$GITHUB_WORKSPACE" || exit 2
+
+          for filename in ${{ env.GIT_DIFF_FILTERED }}
+          do
+            TMPFILE=$(mktemp)
+            docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm cytopia/goimports -e -d "$filename" > "$TMPFILE"
+            reviewdog -name="goimports" -f=diff -f.diff.strip=0 -reporter=github-pr-review < "$TMPFILE" 
+          done
+
+  clang-format:
+    name: runner / clang-format
+    runs-on: ubuntu-latest
+    permissions: 
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # tag=v3.3.0
+      - name: Setup reviewdog tool
+        id: setup-reviewdog
+        uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: v0.14.1
+      # Collect changed or added files changed files
+      - uses: technote-space/get-diff-action@f27caffdd0fb9b13f4fc191c016bb4e0632844af # tag=v6.1.1
+        with:
+          PATTERNS: '**/*.+(h|hpp|c|C|cc|cpp|c++|cxx)'
+      # Execute clang-format against each diff in the branch and post results to reviewdog
+      - name: Check clang-format
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.github_token }}
+        shell: bash
+        run: |
+          set -e
+          cd "$GITHUB_WORKSPACE" || exit 2
+
+          for filename in ${{ env.GIT_DIFF_FILTERED }}
+          do
+            mv $filename "${filename}.orig"
+            docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm gaetan/clang-tools clang-format --style=file --fallback-style=Google "${filename}.orig" > $filename
+            local_format="$(diff -u --label="${filename}.orig" "${filename}.orig" --label=$filename $filename || true)"
+            echo "${local_format}"
+
+            if [[ -n "$local_format" ]]; then
+              echo "${local_format}" | reviewdog -name=clang-format-check -f=diff -f.diff.strip=0 -reporter=github-pr-review 
+            fi
+          done
+
