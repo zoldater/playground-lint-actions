@@ -33,7 +33,7 @@ jobs:
           for filename in ${{ env.GIT_DIFF_FILTERED }}
           do
             TMPFILE=$(mktemp)
-            docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm cytopia/goimports -e -d "$filename" > "$TMPFILE"
+            docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm cytopia/goimports:latest-0.3 -e -d "$filename" > "$TMPFILE"
             reviewdog -name="goimports" -f=diff -f.diff.strip=0 -reporter=github-pr-review < "$TMPFILE" 
           done
 
@@ -68,12 +68,12 @@ jobs:
           for filename in ${{ env.GIT_DIFF_FILTERED }}
           do
             mv $filename "${filename}.orig"
-            docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm gaetan/clang-tools clang-format --style=file --fallback-style=Google "${filename}.orig" > $filename
+            docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm xianpengshen/clang-tools:15 clang-format --style=file --fallback-style=Google "${filename}.orig" > $filename
             local_format="$(diff -u --label="${filename}.orig" "${filename}.orig" --label=$filename $filename || true)"
             echo "${local_format}"
 
             if [[ -n "$local_format" ]]; then
-              echo "${local_format}" | reviewdog -name=clang-format-check -f=diff -f.diff.strip=0 -reporter=github-pr-review 
+              echo "${local_format}" | reviewdog -name=clang-format -f=diff -f.diff.strip=0 -reporter=github-pr-review 
             fi
           done
 
