@@ -39,7 +39,7 @@ jobs:
 
   clang-format:
     name: runner / clang-format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     permissions: 
       contents: read
       issues: write
@@ -68,7 +68,7 @@ jobs:
           for filename in ${{ env.GIT_DIFF_FILTERED }}
           do
             mv $filename "${filename}.orig"
-            docker run -i -v "$(pwd)":"$(pwd)" -w "$(pwd)" --rm xianpengshen/clang-tools:15 clang-format --style=file --fallback-style=Google "${filename}.orig" > $filename
+            clang-format --style=file --fallback-style=Google "${filename}.orig" > $filename
             local_format="$(diff -u --label="${filename}.orig" "${filename}.orig" --label=$filename $filename || true)"
             echo "${local_format}"
 
